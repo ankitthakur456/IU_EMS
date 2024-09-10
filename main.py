@@ -73,6 +73,7 @@ print(HOST_SENSOR)
 
 ACCESS_TOKEN_SENSOR = os.getenv('ACCESS_TOKEN_SENSOR')
 PASSWORD = os.getenv('PASSWORD')
+print(PASSWORD)
 USERNAME = os.getenv('USERNAME1')
 
 HEADERS_SENSOR = {'content-type': 'application/json',

@@ -1,7 +1,6 @@
 import datetime
-import schedule
 import requests
-import os
+import json
 import sys
 import time
 import base64
@@ -11,33 +10,31 @@ from database import DBHelper
 from logging.handlers import TimedRotatingFileHandler
 import os
 import struct
-
+from datetime import datetime, timedelta
 log_level = logging.INFO
 from dotenv import load_dotenv
 
 load_dotenv()
-
-FORMAT = ('%(asctime)-15s %(levelname)-8s %(name)s %(module)-15s:%(lineno)-8s %(message)s')
+FORMAT = '%(asctime)-15s %(levelname)-8s %(name)s %(module)-15s:%(lineno)-8s %(message)s'
 
 logFormatter = logging.Formatter(FORMAT)
 log = logging.getLogger("HIS_LOGS")
-
-# checking and creating logs directory here
+ob_db = DBHelper("EM_data")
+# # checking and creating logs directory here
 
 if getattr(sys, 'frozen', False):
     dirname = os.path.dirname(sys.executable)
 else:
     dirname = os.path.dirname(os.path.abspath(__file__))
-
 logdir = f"{dirname}/logs"
-print(f"log directory name is {logdir}")
+log.info(f"log directory name is {logdir}")
 if not os.path.isdir(logdir):
     log.info("[-] logs directory doesn't exists")
     try:
         os.mkdir(logdir)
         log.info("[+] Created logs dir successfully")
     except Exception as e:
-        log.error(f"[-] Can't create dir logs Error: {e}")
+        log.info(f"[-] Can't create dir logs Error: {e}")
 
 fileHandler = TimedRotatingFileHandler(f'{logdir}/app_log',
                                        when='midnight', interval=1)
@@ -48,119 +45,137 @@ log.addHandler(fileHandler)
 consoleHandler = logging.StreamHandler()
 consoleHandler.setFormatter(logFormatter)
 log.addHandler(consoleHandler)
-
 log.setLevel(log_level)
 
 # endregion
 SENSOR_DATA_INTERVAL = 5
 SAMPLE_RATE = 1
-HOST = 'https://ithingspro.cloud'
 
-SEND_DATA = True
-
-machine_obj = {}
-
-ob_db = DBHelper("EM_data")
-
-prev_sensor_data_sent = time.time()
-
-ACCESS_TOKEN = os.getenv('ACCESS_TOKEN_EM_IU')
-
-HEADERS = {'content-type': 'application/json'}
-
-HOST_SENSOR = os.getenv('HOST_SENSOR')
-print(HOST_SENSOR)
-
-ACCESS_TOKEN_SENSOR = os.getenv('ACCESS_TOKEN_SENSOR')
+# ENV FILE VARIABLES
+HOST = os.getenv('HOST')
+ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')
+USERNAME = os.getenv('USER')
 PASSWORD = os.getenv('PASSWORD')
-USERNAME = os.getenv('USERNAME1')
+HOST_SENSOR = os.getenv("HOST_SENSOR")
+HOST_SENSOR1 = os.getenv("HOST_SENSOR1")
+ACCESS_TOKEN_SENSOR = ob_db.get_access_data()
+# END REGION
 
-HEADERS_SENSOR = {'content-type': 'application/json',
-                  'Authorization': f"Bearer {ACCESS_TOKEN_SENSOR}"}
-
-sensors = {
-    "STEAM_TEMP": {
-        "tableName": "external_device_data_ald_steam_001_a_763"
-    },
-    "SPEED": {
-        "tableName": "external_device_data_ald_speed_001_b_763"
-    },
-    "PAPER_GSM": {
-        "tableName": "external_device_data_ald_gsm_001_c_763"
-    },
-    "STEAM_PRGP_1": {
-        "tableName": "external_device_data_ald_gp1_001_d_763"
-    },
-    "STEAM_PRGP_2": {
-        "tableName": "external_device_data_ald_gp2_001_e_763"
-    },
-    "STEAM_PRGP_3": {
-        "tableName": "external_device_data_ald_gp3_001_f_763"
-    },
-    "STEAM_PRGP_4": {
-        "tableName": "external_device_data_ald_gp4_001_g_763"
-    },
-    "STEAM_PRGP_5": {
-        "tableName": "external_device_data_ald_gp5_001_h_763"
-    },
-    "STEAM_PRGP_6": {
-        "tableName": "external_device_data_ald_gp6_001_i_763"
-    },
-    "STEAM_PRGP_7": {
-        "tableName": "external_device_data_ald_gp7_001_j_763"
-    },
-    "STEAM_PRGP_8": {
-        "tableName": "external_device_data_ald_gp8_001_k_763"
-    },
-    "STEAM_PRGP_9": {
-        "tableName": "external_device_data_ald_gp9_001_l_763"
-    }
+payload = {}
+HEADERS_1 = {
+    'Content-Type': 'application/json',
+    'Authorization': 'Basic Og==',
+    'Cookie': 'JSESSIONID=5BB7E1FA21C8A0A94FAA017C90CA32B1'
 }
 
-
-def generate_sensor_config(sensor_name):
-    config = {
-        "filters": [
-            {
-                "fields": [],
-                "nextCondition": "string",
-                "fieldsCondition": "string"
-            }
-        ],
-        "tableName": sensors[sensor_name]["tableName"],  # Access tableName dynamically
-        "sortField": [{"field": "id", "dir": "desc"}],
-        "groupBy": [],
-        "functions": [],
-        "page": 1,
-        "pageSize": 200,
-        "selectedFields": []
-    }
-    return config
-
-
-STEAM_TEMP = generate_sensor_config("STEAM_TEMP")
-SPEED = generate_sensor_config("SPEED")
-PAPER_GSM = generate_sensor_config("PAPER_GSM")
-STEAM_PRGP_1 = generate_sensor_config("STEAM_PRGP_1")
-STEAM_PRGP_2 = generate_sensor_config("STEAM_PRGP_2")
-STEAM_PRGP_3 = generate_sensor_config("STEAM_PRGP_3")
-STEAM_PRGP_4 = generate_sensor_config("STEAM_PRGP_4")
-STEAM_PRGP_5 = generate_sensor_config("STEAM_PRGP_5")
-STEAM_PRGP_6 = generate_sensor_config("STEAM_PRGP_6")
-STEAM_PRGP_7 = generate_sensor_config("STEAM_PRGP_7")
-STEAM_PRGP_8 = generate_sensor_config("STEAM_PRGP_8")
-STEAM_PRGP_9 = generate_sensor_config("STEAM_PRGP_9")
+HEADERS = {
+    'Authorization': f'Bearer {ACCESS_TOKEN_SENSOR}'
+}
 
 
 def convert_hex_to_ieee754(hex_str):
     try:
         # currently converting to big endian
         decimal_value_big_endian = struct.unpack('>f', bytes.fromhex(hex_str))[0]
-    except Exception as e:
-        log.error(f"Error while converting {hex_str} to float: {e}")
+    except Exception as err:
+        log.error(f"Error while converting {hex_str} to float: {err}")
         decimal_value_big_endian = 0.0
 
     return round(decimal_value_big_endian, 5)
+
+
+def get_equipment_area_asset():
+    try:
+        payload1 = {}
+        payload = {}
+        # Get the current date in the format YYYY-MM-DD
+        current_date = datetime.now().strftime('%Y-%m-%d')
+        today = datetime.today()
+        previous_day = today - timedelta(days=1)
+        date = previous_day.strftime("%Y-%m-%d")
+        print(date)
+        plant_id = [3047, 3048, 3049, 3058, 3059, 3060, 3061, 3062, 3063]
+        for pid in plant_id:
+            url = f"{HOST_SENSOR1}equipmentId={pid}&start={date}T12%3A13%3A14Z&end={current_date}T12%3A13%3A14Z&page=" \
+                  f"1&pageSize=10"
+            req1 = requests.request("POST", url, headers=HEADERS, data=payload1)
+            # print(req1.json())  # Print the response
+            if req1.status_code in [401, 403]:
+                pass
+                refresh_jwt_token()
+            raw_data = req1.json()
+            log.info(raw_data)
+
+            if raw_data is not None:
+
+                latest_data = raw_data['data']['area']['machineGropus']['externalTableResponse'][0]['externalTableData']
+                latest_data1 = raw_data['data']['externalTableResponse']
+                log.info(f'latest data is {latest_data1}')
+                if pid == 3047:
+                    data = latest_data1[0]['externalTableData']['00:30:11:78:A1:A6:01']
+                    max_item = max(data, key=lambda x: x['id'])
+                    latest_data_a = max_item['process_parameter_001_a']
+                    payload.update({'Steam Temperature': convert_hex_to_ieee754(latest_data_a)})
+
+                    data2 = latest_data1[1]['externalTableData']['00:30:11:78:A1:A6:02']
+                    max_item = max(data2, key=lambda x: x['id'])
+                    latest_data_b = max_item['process_parameter_001_b']
+                    payload.update({'Paper GSM': convert_hex_to_ieee754(latest_data_b)})
+
+                    data3 = latest_data1[2]['externalTableData']['00:30:11:78:A1:A6:03']
+                    max_item = max(data3, key=lambda x: x['id'])
+                    latest_data_c = max_item['process_parameter_001_c']
+                    payload.update({'Machine Speed': convert_hex_to_ieee754(latest_data_c)})
+
+                    data4 = latest_data['00:30:11:78:A1:A6:04']
+                    max_item = max(data4, key=lambda x: x['id'])
+                    latest_data_d = max_item['process_parameter_001_d']
+                    payload.update({'Steam Presure GP1': convert_hex_to_ieee754(latest_data_d)})
+
+                elif pid == 3048:
+                    data4 = latest_data['00:30:11:78:A1:A6:05']
+                    max_item = max(data4, key=lambda x: x['id'])
+                    latest_data_e = max_item['process_parameter_001_e']
+                    payload.update({'Steam Presure GP2': convert_hex_to_ieee754(latest_data_e)})
+                elif pid == 3049:
+                    data4 = latest_data['00:30:11:78:A1:A6:06']
+                    max_item = max(data4, key=lambda x: x['id'])
+                    latest_data_f = max_item['process_parameter_001_f']
+                    payload.update({'Steam Presure GP3': convert_hex_to_ieee754(latest_data_f)})
+                elif pid == 3058:
+                    data4 = latest_data['00:30:11:78:A1:A6:07']
+                    max_item = max(data4, key=lambda x: x['id'])
+                    latest_data_g = max_item['process_parameter_001_g']
+                    payload.update({"Steam Presure GP4": convert_hex_to_ieee754(latest_data_g)})
+                elif pid == 3059:
+                    data = latest_data['00:30:11:78:A1:A6:08']
+                    max_item = max(data, key=lambda x: x['id'])
+                    latest_data_h = max_item['process_parameter_001_h']
+                    payload.update({'Steam Presure GP5': convert_hex_to_ieee754(latest_data_h)})
+                elif pid == 3060:
+                    data = latest_data['00:30:11:78:A1:A6:09']
+                    max_item = max(data, key=lambda x: x['id'])
+                    latest_data_i = max_item['process_parameter_001_i']
+                    payload.update({'Steam Presure GP6': convert_hex_to_ieee754(latest_data_i)})
+                elif pid == 3061:
+                    data = latest_data['00:30:11:78:A1:A6:10']
+                    max_item = max(data, key=lambda x: x['id'])
+                    latest_data_j = max_item['process_parameter_001_j']
+                    payload.update({'Steam Presure GP7': convert_hex_to_ieee754(latest_data_j)})
+                elif pid == 3062:
+                    data = latest_data['00:30:11:78:A1:A6:11']
+                    max_item = max(data, key=lambda x: x['id'])
+                    latest_data_k = max_item['process_parameter_001_k']
+                    payload.update({'Steam Presure GP8': convert_hex_to_ieee754(latest_data_k)})
+                elif pid == 3063:
+                    data = latest_data['00:30:11:78:A1:A6:12']
+                    max_item = max(data, key=lambda x: x['id'])
+                    latest_data_k = max_item['process_parameter_001_l']
+                    payload.update({'Steam Presure GP9': convert_hex_to_ieee754(latest_data_k)})
+        # return payload
+    except Exception as err:
+        log.error(f"Error while getting the API data {err}")
+        return []
 
 
 def post_sensors_data(payload):
@@ -177,465 +192,46 @@ def post_sensors_data(payload):
                 log.error(f"[-] Error While sending data to server {e}")
         else:
             log.info("got empty payload")
-    except Exception as e:
-        log.error(f"Error while sending data {e}")
-
-
-def get_steam_data():
-    try:
-        req = requests.post(f'{HOST_SENSOR}/advance-query?organizationId=763', json=STEAM_TEMP, headers=HEADERS_SENSOR,
-                            timeout=2)
-        log.info(req.status_code)
-        log.info(req.text)
-        if req.status_code in [401, 403]:
-            pass
-            refresh_jwt_token()
-        raw_data = req.json()
-        payload = {}
-        log.info(raw_data)
-        id_list = []
-        if raw_data is not None:
-            max_id = max([m_data['id'] for m_data in raw_data])
-            latest_data = {}
-            for m_data in raw_data:
-                if m_data['id'] == max_id:
-                    latest_data = m_data
-                    break
-            if latest_data:
-                payload = {
-                    'INF_UPTM_PR_MAIN_TEMP_DEG_CELCIUS': convert_hex_to_ieee754(latest_data['process_parameter_001_a']),
-                }
-                post_sensors_data(payload)
-        return payload
-    except Exception as e:
-        log.error(f"Error while sending the Steam data {e}")
-        return []
-
-
-def get_speed_data():
-    try:
-        req = requests.post(f'{HOST_SENSOR}/advance-query?organizationId=763', json=SPEED, headers=HEADERS_SENSOR,
-                            timeout=2)
-        log.info(req.status_code)
-        log.info(req.text)
-        if req.status_code in [401, 403]:
-            pass
-            refresh_jwt_token()
-        raw_data = req.json()
-        payload = {}
-        log.info(raw_data)
-        id_list = []
-        if raw_data is not None:
-            max_id = max([m_data['id'] for m_data in raw_data])
-            latest_data = {}
-            for m_data in raw_data:
-                if m_data['id'] == max_id:
-                    latest_data = m_data
-                    break
-            if latest_data:
-                hex_value = latest_data['process_parameter_001_b']
-                float_value = struct.unpack('!f', bytes.fromhex(hex_value))[0]
-                payload = {
-
-                    'INF_UPTM_MAL_SPEED_MPM': round(float_value, 2),
-                }
-                post_sensors_data(payload)
-        return payload
-    except Exception as e:
-        log.error(f"Error while sending the speed data {e}")
-        return []
-
-
-def get_GSM_data():
-    try:
-        req = requests.post(f'{HOST_SENSOR}/advance-query?organizationId=763', json=PAPER_GSM, headers=HEADERS_SENSOR,
-                            timeout=2)
-        log.info(req.status_code)
-        log.info(req.text)
-        if req.status_code in [401, 403]:
-            pass
-            refresh_jwt_token()
-        raw_data = req.json()
-        payload = {}
-        log.info(raw_data)
-        id_list = []
-        if raw_data is not None:
-            max_id = max([m_data['id'] for m_data in raw_data])
-            latest_data = {}
-            for m_data in raw_data:
-                if m_data['id'] == max_id:
-                    latest_data = m_data
-                    break
-            if latest_data:
-                hex_value = latest_data['process_parameter_001_c']
-                float_value = struct.unpack('!f', bytes.fromhex(hex_value))[0]
-                payload = {
-                    'INF_UPTM_GSM_GSM': float_value,
-                }
-                post_sensors_data(payload)
-        return payload
-    except Exception as e:
-        log.error(f"Error while sending the gsm data {e}")
-        return []
-
-
-def get_steam1_data():
-    try:
-        req = requests.post(f'{HOST_SENSOR}/advance-query?organizationId=763', json=STEAM_PRGP_1,
-                            headers=HEADERS_SENSOR, timeout=2)
-        log.info(req.status_code)
-        log.info(req.text)
-        if req.status_code in [401, 403]:
-            pass
-            refresh_jwt_token()
-        raw_data = req.json()
-        payload = {}
-        log.info(raw_data)
-        id_list = []
-        if raw_data is not None:
-            max_id = max([m_data['id'] for m_data in raw_data])
-            latest_data = {}
-            for m_data in raw_data:
-                if m_data['id'] == max_id:
-                    latest_data = m_data
-                    break
-            if latest_data:
-                hex_value = latest_data['process_parameter_001_d']
-                float_value = struct.unpack('!f', bytes.fromhex(hex_value))[0]
-                payload = {
-                    'INF_UPTM_STEAM_PR_GP1_BAR': round(float_value, 2),
-                }
-                post_sensors_data(payload)
-        return payload
-    except Exception as e:
-        log.error(f"Error while sending the steam1 data {e}")
-        return []
-
-
-def get_steam2_data():
-    try:
-        req = requests.post(f'{HOST_SENSOR}/advance-query?organizationId=763', json=STEAM_PRGP_2,
-                            headers=HEADERS_SENSOR, timeout=2)
-        log.info(req.status_code)
-        log.info(req.text)
-        if req.status_code in [401, 403]:
-            pass
-            refresh_jwt_token()
-        raw_data = req.json()
-        payload = {}
-        log.info(raw_data)
-        id_list = []
-        if raw_data is not None:
-            max_id = max([m_data['id'] for m_data in raw_data])
-            latest_data = {}
-            for m_data in raw_data:
-                if m_data['id'] == max_id:
-                    latest_data = m_data
-                    break
-            if latest_data:
-                hex_value = latest_data['process_parameter_001_e']
-                float_value = struct.unpack('!f', bytes.fromhex(hex_value))[0]
-                payload = {
-                    'INF_UPTM_STEAM_PR_GP2_BAR': float_value,
-                }
-                post_sensors_data(payload)
-        return payload
-    except Exception as e:
-        log.error(f"Error while sending the steam2 data {e}")
-        return []
-
-
-def get_steam3_data():
-    try:
-        req = requests.post(f'{HOST_SENSOR}/advance-query?organizationId=763', json=STEAM_PRGP_3,
-                            headers=HEADERS_SENSOR, timeout=2)
-        log.info(req.status_code)
-        log.info(req.text)
-        if req.status_code in [401, 403]:
-            pass
-            refresh_jwt_token()
-        raw_data = req.json()
-        payload = {}
-        log.info(raw_data)
-        id_list = []
-        if raw_data is not None:
-            max_id = max([m_data['id'] for m_data in raw_data])
-            latest_data = {}
-            for m_data in raw_data:
-                if m_data['id'] == max_id:
-                    latest_data = m_data
-                    break
-            if latest_data:
-                hex_value = latest_data['process_parameter_001_f']
-                float_value = struct.unpack('!f', bytes.fromhex(hex_value))[0]
-                payload = {
-                    'INF_UPTM_STEAM_PR_GP3_BAR': float_value,
-                }
-                post_sensors_data(payload)
-        return payload
-    except Exception as e:
-        log.error(f"Error while sending the steam3 data {e}")
-        return []
-
-
-def get_steam4_data():
-    try:
-        req = requests.post(f'{HOST_SENSOR}/advance-query?organizationId=763', json=STEAM_PRGP_4,
-                            headers=HEADERS_SENSOR, timeout=2)
-        log.info(req.status_code)
-        log.info(req.text)
-        if req.status_code in [401, 403]:
-            pass
-            refresh_jwt_token()
-        raw_data = req.json()
-        payload = {}
-        log.info(raw_data)
-        id_list = []
-        if raw_data is not None:
-            max_id = max([m_data['id'] for m_data in raw_data])
-            latest_data = {}
-            for m_data in raw_data:
-                if m_data['id'] == max_id:
-                    latest_data = m_data
-                    break
-            if latest_data:
-                hex_value = latest_data['process_parameter_001_g']
-                float_value = struct.unpack('!f', bytes.fromhex(hex_value))[0]
-                payload = {
-                    'INF_UPTM_STEAM_PR_GP4_BAR': float_value,
-                }
-                post_sensors_data(payload)
-        return payload
-    except Exception as e:
-        log.error(f"Error while sending the steam4 data {e}")
-        return []
-
-
-def get_steam5_data():
-    try:
-        req = requests.post(f'{HOST_SENSOR}/advance-query?organizationId=763', json=STEAM_PRGP_5,
-                            headers=HEADERS_SENSOR, timeout=2)
-        log.info(req.status_code)
-        log.info(req.text)
-        if req.status_code in [401, 403]:
-            pass
-            refresh_jwt_token()
-        raw_data = req.json()
-        payload = {}
-        log.info(raw_data)
-        id_list = []
-        if raw_data is not None:
-            max_id = max([m_data['id'] for m_data in raw_data])
-            latest_data = {}
-            for m_data in raw_data:
-                if m_data['id'] == max_id:
-                    latest_data = m_data
-                    break
-            if latest_data:
-                hex_value = latest_data['process_parameter_001_h']
-                float_value = struct.unpack('!f', bytes.fromhex(hex_value))[0]
-                payload = {
-                    'INF_UPTM_STEAM_PR_GP5_BAR': float_value,
-                }
-                post_sensors_data(payload)
-        return payload
-    except Exception as e:
-        log.error(f"Error while sending the steam5 data {e}")
-        return []
-
-
-def get_steam6_data():
-    try:
-        req = requests.post(f'{HOST_SENSOR}/advance-query?organizationId=763', json=STEAM_PRGP_6,
-                            headers=HEADERS_SENSOR, timeout=2)
-        log.info(req.status_code)
-        log.info(req.text)
-        if req.status_code in [401, 403]:
-            pass
-            refresh_jwt_token()
-        raw_data = req.json()
-        payload = {}
-        log.info(raw_data)
-        id_list = []
-        if raw_data is not None:
-            max_id = max([m_data['id'] for m_data in raw_data])
-            latest_data = {}
-            for m_data in raw_data:
-                if m_data['id'] == max_id:
-                    latest_data = m_data
-                    break
-            if latest_data:
-                hex_value = latest_data['process_parameter_001_i']
-                float_value = struct.unpack('!f', bytes.fromhex(hex_value))[0]
-                payload = {
-                    'INF_UPTM_STEAM_PR_GP6_BAR': float_value,
-                }
-                post_sensors_data(payload)
-        return payload
-    except Exception as e:
-        log.error(f"Error while sending the steam6 data {e}")
-        return []
-
-
-def get_steam7_data():
-    try:
-        req = requests.post(f'{HOST_SENSOR}/advance-query?organizationId=763', json=STEAM_PRGP_7,
-                            headers=HEADERS_SENSOR, timeout=2)
-        log.info(req.status_code)
-        log.info(req.text)
-        if req.status_code in [401, 403]:
-            pass
-            refresh_jwt_token()
-        raw_data = req.json()
-        payload = {}
-        log.info(raw_data)
-        id_list = []
-        if raw_data is not None:
-            max_id = max([m_data['id'] for m_data in raw_data])
-            latest_data = {}
-            for m_data in raw_data:
-                if m_data['id'] == max_id:
-                    latest_data = m_data
-                    break
-            if latest_data:
-                hex_value = latest_data['process_parameter_001_j']
-                float_value = struct.unpack('!f', bytes.fromhex(hex_value))[0]
-                payload = {
-                    'INF_UPTM_STEAM_PR_GP7_BAR': float_value,
-                }
-                post_sensors_data(payload)
-        return payload
-    except Exception as e:
-        log.error(f"Error while sending the steam7 data {e}")
-        return []
-
-
-schedule.every(SENSOR_DATA_INTERVAL).seconds.do(get_steam7_data)
-
-
-def get_steam8_data():
-    try:
-        req = requests.post(f'{HOST_SENSOR}/advance-query?organizationId=763', json=STEAM_PRGP_8,
-                            headers=HEADERS_SENSOR, timeout=2)
-        log.info(req.status_code)
-        log.info(req.text)
-        if req.status_code in [401, 403]:
-            pass
-            refresh_jwt_token()
-        raw_data = req.json()
-        payload = {}
-        log.info(raw_data)
-        id_list = []
-        if raw_data is not None:
-            max_id = max([m_data['id'] for m_data in raw_data])
-            latest_data = {}
-            for m_data in raw_data:
-                if m_data['id'] == max_id:
-                    latest_data = m_data
-                    break
-            if latest_data:
-                hex_value = latest_data['process_parameter_001_k']
-                float_value = struct.unpack('!f', bytes.fromhex(hex_value))[0]
-                payload = {
-                    'INF_UPTM_STEAM_PR_GP8_BAR': float_value,
-                }
-                post_sensors_data(payload)
-        return payload
-    except Exception as e:
-        log.error(f"Error while sending the steam8 data {e}")
-        return []
-
-
-def get_steam9_data():
-    try:
-        req = requests.post(f'{HOST_SENSOR}/advance-query?organizationId=763', json=STEAM_PRGP_9,
-                            headers=HEADERS_SENSOR, timeout=2)
-        log.info(req.status_code)
-        log.info(req.text)
-        if req.status_code in [401, 403]:
-            pass
-            refresh_jwt_token()
-        raw_data = req.json()
-        payload = {}
-        log.info(raw_data)
-        id_list = []
-        if raw_data is not None:
-            max_id = max([m_data['id'] for m_data in raw_data])
-            latest_data = {}
-            for m_data in raw_data:
-                if m_data['id'] == max_id:
-                    latest_data = m_data
-                    break
-            if latest_data:
-                hex_value = latest_data['process_parameter_001_l']
-                float_value = struct.unpack('!f', bytes.fromhex(hex_value))[0]
-                payload = {
-                    'INF_UPTM_STEAM_PR_GP9_BAR': float_value,
-                }
-                post_sensors_data(payload)
-        return payload
-    except Exception as e:
-        log.error(f"Error while sending the steam9 data {e}")
-        return []
-
-
-functions_to_schedule = [
-    get_steam_data,
-    get_speed_data,
-    get_GSM_data,
-    get_steam1_data,
-    get_steam2_data,
-    get_steam3_data,
-    get_steam4_data,
-    get_steam5_data,
-    get_steam6_data,
-    get_steam8_data,
-    get_steam9_data
-]
-
-for function in functions_to_schedule:
-    schedule.every(SENSOR_DATA_INTERVAL).seconds.do(function)
+    except Exception as ee:
+        log.error(f"Error while sending data {ee}")
 
 
 def refresh_jwt_token():
     try:
-        global ACCESS_TOKEN_SENSOR, HEADERS_SENSOR, USERNAME, PASSWORD
+        global ACCESS_TOKEN_SENSOR, HEADERS_1, USERNAME, PASSWORD, HEADERS
         ob_db.add_access_data(ACCESS_TOKEN_SENSOR)
-        refresh_url = f"{HOST_SENSOR}/login"
-        a_payload = {'username': base64.b64decode(USERNAME).decode('ascii'),
-                     'password': base64.b64decode(PASSWORD).decode('ascii')}
-
-        req = requests.post(refresh_url, json=a_payload, headers=HEADERS, timeout=2)
+        refresh_url = 'https://api.infinite-uptime.com/api/3.0/idap-api/login'
+        # log.info(f"+++++++++++++++++++++++++++++++++++{base64.b64decode(USERNAME).decode('ascii')}")
+        # log.info(base64.b64decode(PASSWORD).decode('ascii'))
+        a_payload = json.dumps({'username': 'rishavpreet@hisgroup.in',
+                                'password': "SdS6ahGbGZ5@#f"})
+        req = requests.request("POST", refresh_url, headers=HEADERS_1, data=a_payload)
         log.info(req.status_code)
-        log.info(req.text)
-
         raw_data = req.json()
         if raw_data:
             access_token = raw_data['data']['accessToken']
             if access_token:
                 ob_db.add_access_data(access_token)
-
         at = ob_db.get_access_data()
         if at:
             ACCESS_TOKEN_SENSOR = at
-            HEADERS_SENSOR = {'content-type': 'application/json',
-                              'Authorization': f"Bearer {ACCESS_TOKEN_SENSOR}"}
+            HEADERS = {'Authorization': f"Bearer {ACCESS_TOKEN_SENSOR}"}
     except Exception as e:
         log.error(f"Error while Refreshing JWT TOKEN: {e}")
 
 
 if __name__ == "__main__":
     try:
-        access_token = ob_db.get_access_data()
-        if access_token is None:
-            log.info("[+] Error No Access Token is Found Refreshing...")
-        refresh_jwt_token()
-
-        at = ob_db.get_access_data()
-        ACCESS_TOKEN_SENSOR = at
-        HEADERS_SENSOR['Authorization'] = f'Bearer {ACCESS_TOKEN_SENSOR}'
         while True:
-            schedule.run_pending()
-            time.sleep(2)
+            access_token = ob_db.get_access_data()
+            if access_token is None:
+                log.info("[+] Error No Access Token is Found Refreshing...")
+                refresh_jwt_token()
+            data = get_equipment_area_asset()
+            log.info(data)
+            at = ob_db.get_access_data()
+            ACCESS_TOKEN_SENSOR = at
+            HEADERS['Authorization'] = f'Bearer {ACCESS_TOKEN_SENSOR}'
+            time.sleep(30)
     except Exception as e:
-        log.error(f"Error Running Program {e}")
+        log.info(f"Error Running Program {e}")

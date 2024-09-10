@@ -1,0 +1,173 @@
+const schedule = require('node-schedule');
+const axios = require('axios');
+const struct = require('python-struct');
+const { load } = require('dotenv');
+
+load();
+
+const SENSOR_DATA_INTERVAL = 5;
+const SAMPLE_RATE = 1;
+let HOST = '';
+
+const SEND_DATA = true;
+
+const machine_obj = {};
+
+const ACCESS_TOKEN = 'Nmz6IGFsFEjhmFhDjThD';
+
+const HEADERS = { 'content-type': 'application/json' };
+
+const HOST_SENSOR = 'https://api.infinite-uptime.com/api/3.0/idap-api';
+console.log(HOST_SENSOR);
+
+const ACCESS_TOKEN_SENSOR = 'eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICIyY0NxRnpxRXJrNU5GS1RjTi1YSk1IdE9NS2tWVTZXS1hIdHZFMF8xZE5ZIn0.eyJleHAiOjE3MTAyNjI1NTIsImlhdCI6MTcxMDIxOTM1MiwianRpIjoiZTcxZWMyNzItNDNkZC00MzI3LTgwNzYtZWVhYmU1Zjc5NjFkIiwiaXNzIjoiaHR0cHM6Ly9pZGVudGl0eS5pbmZpbml0ZS11cHRpbWUuY29tL3JlYWxtcy9pZGFwIiwic3ViIjoiZjo2MGNhNzY4Yy1iMTA0LTQ0OTktYjU4Yy05MzliOTdlNzAzM2Q6OTg3NCIsInR5cCI6IkJlYXJlciIsImF6cCI6ImlkYXAiLCJzZXNzaW9uX3N0YXRlIjoiNGE2MzM3MzItYzQxZC00ZjEyLWJlMTYtZDAwMTEzZTgzZWNlIiwiYWxsb3dlZC1vcmlnaW5zIjpbIioiXSwic2NvcGUiOiJwcm9maWxlIGVtYWlsIiwic2lkIjoiNGE2MzM3MzItYzQxZC00ZjEyLWJlMTYtZDAwMTEzZTgzZWNlIiwiaXNfYWRtaW4iOiJmYWxzZSIsImVtYWlsX3ZlcmlmaWVkIjpmYWxzZSwibmFtZSI6IlNoaXZhbSBNYXVyeWEiLCJpZGFwX3JvbGUiOiJST0xFX1VTRVIiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJzaGl2YW1tYXVyeWEwMjQ4QGdtYWlsLmNvbSIsImdpdmVuX25hbWUiOiJTaGl2YW0iLCJsb2NhbGUiOiJlbiIsImZhbWlseV9uYW1lIjoiTWF1cnlhIiwiZW1haWwiOiJzaGl2YW1tYXVyeWEwMjQ4QGdtYWlsLmNvbSJ9.mUBIzeh5Vny593evB7MHU0oe4SGCPv8wNcup-pDrBG9ug_vLoa72nq9Z2sw87e_4QHlPUxhTL-LcnLYBjTfgHxNlyTbkCeL6YfZA3bQH2e-jmkSBatBOu1d4u27xTSOR-QCmAbAAniz61wLzvfIvz8kyzHzXdSn_9frrIQsoMCVDo0anWaiasaP7HHy5Tj1KLVIRfPMsfsvQX92XkkIPx_HMD4X2ge7nQWEiutp499kpoEuOz2beriHNQrr2eYvcmUJk1rQuw3bNNq9g2c1F7Rbl6R5KZgKSDpN3QyS3p6masP5SAwBisDbBDJ9VrX4_-f5pCJk2NtoFao7Eklk1Gg';
+const PASSWORD = "'RTRzeVA0JCR3MHJk'";
+const USERNAME = "'c2hpdmFtbWF1cnlhMDI0OEBnbWFpbC5jb20='";
+
+const HEADERS_SENSOR = {
+  'content-type': 'application/json',
+  'Authorization': `Bearer ${ACCESS_TOKEN_SENSOR}`
+};
+
+const sensors = {
+  "STEAM_TEMP": {
+    "tableName": "external_device_data_ald_steam_001_a_763"
+  },
+  "SPEED": {
+    "tableName": "external_device_data_ald_speed_001_b_763"
+  },
+  "PAPER_GSM": {
+    "tableName": "external_device_data_ald_gsm_001_c_763"
+  },
+  "STEAM_PRGP_1": {
+    "tableName": "external_device_data_ald_gp1_001_d_763"
+  },
+  "STEAM_PRGP_2": {
+    "tableName": "external_device_data_ald_gp2_001_e_763"
+  },
+  "STEAM_PRGP_3": {
+    "tableName": "external_device_data_ald_gp3_001_f_763"
+  },
+  "STEAM_PRGP_4": {
+    "tableName": "external_device_data_ald_gp4_001_g_763"
+  },
+  "STEAM_PRGP_5": {
+    "tableName": "external_device_data_ald_gp5_001_h_763"
+  },
+  "STEAM_PRGP_6": {
+    "tableName": "external_device_data_ald_gp6_001_i_763"
+  },
+  "STEAM_PRGP_7": {
+    "tableName": "external_device_data_ald_gp7_001_j_763"
+  },
+  "STEAM_PRGP_8": {
+    "tableName": "external_device_data_ald_gp8_001_k_763"
+  },
+  "STEAM_PRGP_9": {
+    "tableName": "external_device_data_ald_gp9_001_l_763"
+  }
+};
+
+function generate_sensor_config(sensor_name) {
+  return {
+    "filters": [
+      {
+        "fields": [],
+        "nextCondition": "string",
+        "fieldsCondition": "string"
+      }
+    ],
+    "tableName": sensors[sensor_name]["tableName"], // Access tableName dynamically
+    "sortField": [{ "field": "id", "dir": "desc" }],
+    "groupBy": [],
+    "functions": [],
+    "page": 1,
+    "pageSize": 200,
+    "selectedFields": []
+  };
+}
+
+const STEAM_TEMP = generate_sensor_config("STEAM_TEMP");
+const SPEED = generate_sensor_config("SPEED");
+const PAPER_GSM = generate_sensor_config("PAPER_GSM");
+const STEAM_PRGP_1 = generate_sensor_config("STEAM_PRGP_1");
+const STEAM_PRGP_2 = generate_sensor_config("STEAM_PRGP_2");
+const STEAM_PRGP_3 = generate_sensor_config("STEAM_PRGP_3");
+const STEAM_PRGP_4 = generate_sensor_config("STEAM_PRGP_4");
+const STEAM_PRGP_5 = generate_sensor_config("STEAM_PRGP_5");
+const STEAM_PRGP_6 = generate_sensor_config("STEAM_PRGP_6");
+const STEAM_PRGP_7 = generate_sensor_config("STEAM_PRGP_7");
+const STEAM_PRGP_8 = generate_sensor_config("STEAM_PRGP_8");
+const STEAM_PRGP_9 = generate_sensor_config("STEAM_PRGP_9");
+
+function convert_hex_to_ieee754(hex_str) {
+  try {
+    // currently converting to big endian
+    const decimal_value_big_endian = struct.unpack('>f', Buffer.from(hex_str, 'hex'))[0];
+    return decimal_value_big_endian.toFixed(5);
+  } catch (e) {
+    console.error(`Error while converting ${hex_str} to float: ${e}`);
+    return 0.0;
+  }
+}
+
+async function post_sensors_data(payload) {
+  try {
+    if (payload) {
+      const host_tb = `${HOST}/api/v1/${ACCESS_TOKEN}/telemetry/`;
+      console.log(`Sending ${JSON.stringify(payload)} to ${host_tb}`);
+      const req_post = await axios.post(host_tb, payload, { headers: HEADERS, timeout: 2000 });
+      console.log(req_post.status);
+      console.log(req_post.data);
+    } else {
+      console.log("got empty payload");
+    }
+  } catch (e) {
+    console.error(`[-] Error While sending data to server ${e}`);
+  }
+}
+
+async function get_steam_data() {
+  try {
+    const req = await axios.post(`${HOST_SENSOR}/advance-query?organizationId=763`, STEAM_TEMP, { headers: HEADERS_SENSOR, timeout: 2000 });
+    console.log(req.status);
+
+    const raw_data = req.data;
+    let payload = {};
+    if (raw_data) {
+      const max_id = Math.max(...raw_data.map(m_data => m_data.id));
+      const latest_data = raw_data.find(m_data => m_data.id === max_id);
+      if (latest_data) {
+        payload = {
+          'INF_UPTM_PR_MAIN_TEMP_DEG_CELCIUS': convert_hex_to_ieee754(latest_data.process_parameter_001_a),
+        };
+        await post_sensors_data(payload);
+      }
+    }
+    return payload;
+  } catch (e) {
+    console.error(`Error while sending the Steam data ${e}`);
+    return {};
+  }
+}
+
+schedule.scheduleJob(`*/${SENSOR_DATA_INTERVAL} * * * * *`, get_steam_data);
+
+(async () => {
+  try {
+    let access_token = ACCESS_TOKEN_SENSOR;
+    if (!access_token) {
+      console.log("[+] Error No Access Token is Found Refreshing...");
+    }
+
+    HEADERS_SENSOR['Authorization'] = `Bearer ${ACCESS_TOKEN_SENSOR}`;
+    while (true) {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      schedule.scheduleJob('* * * * *', () => {
+        schedule.scheduleJob(`*/${SENSOR_DATA_INTERVAL} * * * * *`, get_steam_data);
+      });
+    }
+  } catch (e) {
+    console.error(`Error Running Program ${e}`);
+  }
+})();
